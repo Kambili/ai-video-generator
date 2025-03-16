@@ -35,15 +35,19 @@ function App() {
   async function handleSubmit(ev:FormEvent) {
     ev.preventDefault();
     setLoadingMessage('Generating assets...');
+    console.log("Image generating");
     const assetsResponse = await axios.get(
       'http://localhost:8080/create-story?url='+encodeURIComponent(url)
     );
-    const id = await assetsResponse.data;
+    console.log("Image generated");
+    
+    const id = assetsResponse.data.id;
+    console.log("ID is: ",id);
+    
     setLoadingMessage('Preparing your video...');
     const videoResponse = await axios.get('http://localhost:8080/build-video?id='+id);
     setLoadingMessage('');
-    window.location.href = 'http://localhost:8080/'+videoResponse.data;
-  }
+    window.location.href = 'http://localhost:8080/'+videoResponse.data.videoUrl;  }
   return (
     <>
       {loadingMessage && (
