@@ -1,15 +1,9 @@
 # backend
 
 To install dependencies:
+npm install
 
-```bash
-bun install
-```
+to run:
+node index.js
 
-To run:
-
-```bash
-bun run index.js
-```
-
-This project was created using `bun init` in bun v1.1.18. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+you need google cloud api Json file and Open AI api key
