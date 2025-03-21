@@ -12,8 +12,7 @@ import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import speech from '@google-cloud/speech';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
-import axios from "axios";
-import FormData from "form-data";
+
 
 dotenv.config();
 const app = express();
@@ -102,60 +101,53 @@ async function extractKeyNouns(summaryText) {
 }
 
 // Image generation uses simple noun-based prompts
-// Image generation uses simple noun-based prompts
 async function generateImages(summaryText, dir) {
   // Extract key nouns from the summary
   const keyNouns = await extractKeyNouns(summaryText);
   console.log("Extracted key nouns for image generation:", keyNouns);
   
-  // Make sure the directory exists
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-  
   // Create simple, focused prompts based on individual nouns
   for (let i = 0; i < keyNouns.length; i++) {
     try {
       const noun = keyNouns[i];
-      const imagePath = path.join(dir, `b-roll-${i + 1}.webp`);
+      const imagePath = path.join(dir, `b-roll-${i + 1}.png`);
       
       // Simple, focused prompt for better image generation
       const prompt = `image of ${noun}.`;
       
       console.log(`Generating image ${i + 1} with prompt: "${prompt}"`);
       
-      // Configure the payload for Stability AI
-      const payload = {
+      const response = await openai.images.generate({
         prompt: prompt,
-        output_format: "webp"
-      };
+        n: 1,
+        size: '1024x1024',
+        quality: "hd"
+      });
       
-      // Make the API request to Stability AI
-      const response = await axios.postForm(
-        `https://api.stability.ai/v2beta/stable-image/generate/ultra`,
-        axios.toFormData(payload, new FormData()),
-        {
-          validateStatus: undefined,
-          responseType: "arraybuffer",
-          headers: { 
-            Authorization: `Bearer ${process.env.STABILITY_API_KEY}`, 
-            Accept: "image/*" 
-          },
-        },
-      );
+      // Get the image URL from the response
+      const imageUrl = response.data[0].url;
       
-      // Handle the response
-      if (response.status === 200) {
-        fs.writeFileSync(imagePath, Buffer.from(response.data));
-        console.log(`Successfully saved image to ${imagePath}`);
-      } else {
-        console.error(`Error generating image: ${response.status}: ${response.data.toString()}`);
-      }
+      // Download the image and save it
+      const imageResponse = await fetch(imageUrl);
+      const imageBuffer = await imageResponse.arrayBuffer();
+      fs.writeFileSync(imagePath, Buffer.from(imageBuffer));
+      
+      console.log(`Generated image ${i + 1} saved to ${imagePath}`);
+      
+      // Save the prompt used for reference
+      fs.writeFileSync(path.join(dir, `image-prompt-${i + 1}.txt`), prompt);
       
     } catch (error) {
-      console.error(`Error generating image for noun "${keyNouns[i]}":`, error);
+      console.error(`Error generating image ${i + 1}:`, error);
+      // Create a placeholder image if generation fails (1x1 transparent PNG)
+      const emptyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+      fs.writeFileSync(path.join(dir, `b-roll-${i + 1}.png`), emptyPng);
+      console.log(`Created placeholder image for ${i + 1}`);
     }
   }
+  
+  // Save the extracted nouns for reference
+  fs.writeFileSync(path.join(dir, 'key-nouns.json'), JSON.stringify(keyNouns));
 }
 
 // Improved voiceover generation with better error handling
@@ -326,7 +318,7 @@ app.get('/create-story', async (req, res) => {
         // Create placeholder files
         for (let i = 0; i < 3; i++) {
           const emptyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-          fs.writeFileSync(path.join(dir, `b-roll-${i + 1}.webp`), emptyPng);
+          fs.writeFileSync(path.join(dir, `b-roll-${i + 1}.png`), emptyPng);
         }
       }
 
@@ -360,6 +352,7 @@ app.get('/create-story', async (req, res) => {
   }
 });
 
+// Improved build-video function with better audio handling
 app.get('/build-video', async (req, res) => {
   try {
     const id = req.query.id;
@@ -392,7 +385,7 @@ app.get('/build-video', async (req, res) => {
     
     // Verify all images exist and create placeholders if needed
     for (let i = 1; i <= 3; i++) {
-      const imgPath = path.join(absoluteDir, `${imageBase}${i}.webp`);
+      const imgPath = path.join(absoluteDir, `${imageBase}${i}.png`);
       if (!fs.existsSync(imgPath) || fs.statSync(imgPath).size === 0) {
         const emptyPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
         fs.writeFileSync(imgPath, emptyPng);
@@ -516,7 +509,7 @@ app.get('/build-video', async (req, res) => {
     
     // Create image segments with portions of the audio - without subtitles first
     for (let i = 0; i < 3; i++) {
-      const imageFile = path.join(absoluteDir, `${imageBase}${i+1}.webp`);
+      const imageFile = path.join(absoluteDir, `${imageBase}${i+1}.png`);
       const outputFile = path.join(tempDir, `output_${i}.mp4`);
       const startTime = i * segmentDuration;
       
